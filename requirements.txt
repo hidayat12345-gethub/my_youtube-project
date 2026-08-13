@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pydantic
+sqlalchemy
+python-dotenv
+google-genai
+edge-tts
+requests
+Pillow
+google-api-python-client
+google-auth-oauthlib

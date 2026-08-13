@@ -1,0 +1,68 @@
+name: Daily Holy Month Video
+
+# Runs once a day on GitHub's free servers — you don't need to own or
+# leave on any machine yourself. Adjust the cron time below (it's in
+# UTC). This example runs at 8:00 AM UTC daily.
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch: {}   # lets you also trigger it manually from the Actions tab, for testing
+
+jobs:
+  produce-video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30   # a single video shouldn't take this long, but caps runaway jobs
+    # FIX (audit): without this, the auto-generated GITHUB_TOKEN may only
+    # have read access on repos where that's the org/repo default — the
+    # final "git push" step would then fail silently-ish (a permission
+    # error in the Actions log, easy to miss if you're not watching).
+    # Explicit > implicit here.
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository (includes holy_month.db from previous runs)
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies
+        run: |
+          pip install fastapi uvicorn pydantic sqlalchemy python-dotenv \
+                      google-genai edge-tts requests Pillow google-api-python-client google-auth-oauthlib
+
+      - name: Write .env from GitHub Secrets
+        run: |
+          cat > .env << EOF
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL=gemini-2.5-flash
+          YOUTUBE_CLIENT_ID=${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET=${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN=${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
+          REQUIRE_HUMAN_REVIEW=true
+          AUTO_APPROVE_AFTER_HOURS=20
+          PUBLISH_HOUR=8
+          SCHEDULER_CHECK_INTERVAL_MINUTES=15
+          ENVIRONMENT=production
+          DEBUG=false
+          SECRET_KEY=${{ secrets.SECRET_KEY }}
+          EOF
+
+      - name: Produce today's video (does nothing if already done today)
+        run: python holy_month_automation.py produce-today
+
+      - name: Commit updated database back to the repo
+        run: |
+          git config user.name "Holy Month AI Bot"
+          git config user.email "actions@github.com"
+          git add holy_month.db
+          git diff --staged --quiet || git commit -m "Daily video production $(date -u +%Y-%m-%d)"
+          git push

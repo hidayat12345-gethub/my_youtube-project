@@ -1,0 +1,43 @@
+# OPTIONAL — see Dockerfile's header comment. Runs the FastAPI backend
+# and the Streamlit dashboard as two containers sharing the same
+# database/output/logs via bind mounts, so both see the same state.
+#
+# Usage:
+#   docker compose up --build
+#   Dashboard: http://localhost:8501
+#   Backend:   http://localhost:8000
+#
+# .env must exist in the same directory as this file before running.
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./holy_month.db:/app/holy_month.db
+      - ./output_videos:/app/output_videos
+      - ./logs:/app/logs
+      - ./backups:/app/backups
+      - ./holy_month_settings.json:/app/holy_month_settings.json
+      - ./holy_month_prompt_templates.json:/app/holy_month_prompt_templates.json
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    ports:
+      - "8501:8501"
+    environment:
+      - HOLY_MONTH_API_URL=http://backend:8000
+    volumes:
+      - ./holy_month.db:/app/holy_month.db:ro
+      - ./logs:/app/logs:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
